@@ -439,14 +439,13 @@ sub balancedParens {
 
 sub is_external($)
 {
-  my $filename = shift;
+	my ($filename) = @_;
+	my $dir;
 
-  return 0 unless (defined($opt_external) && $opt_external);
-
-  foreach my $dir (@internal_dirs) {
-    return 0 if ($filename =~ /^\Q$dir\/\E/);
-  }
-  return 1;
+	foreach $dir (@internal_dirs) {
+		return 0 if ($filename =~ /^\Q$dir\/\E/);
+	}
+	return 1;
 }
 
 
