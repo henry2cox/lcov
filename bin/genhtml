@@ -97,6 +97,7 @@ use Data::Dumper;
 
 use lib "$FindBin::Bin/../lib";
 use lcovutil qw (set_tool_name define_errors parse_ignore_errors
+                 $tool_name $tool_dir $lcov_version $lcov_url
                  system_no_output
                  ignorable_error
                  $ERROR_MISMATCH $ERROR_SOURCE $ERROR_BRANCH $ERROR_FORMAT
@@ -110,14 +111,10 @@ use lcovutil qw (set_tool_name define_errors parse_ignore_errors
                  parse_cov_filters summarize_cov_filters
                  $FILTER_BRANCH_NO_COND $FILTER_LINE_CLOSE_BRACE @cov_filter
                  rate get_overall_line $default_precision check_precision
-                 die_handler warn_handler $tool_name);
+                 die_handler warn_handler);
 
 # Global constants
-our $title              = "LCOV - differential code coverage report";
-our $tool_dir           = abs_path(dirname($0));
-our $lcov_version       = 'LCOV version '.`"$tool_dir"/get_version.sh --full`;
-#our $lcov_url           = "http://ltp.sourceforge.net/coverage/lcov.php";
-our $lcov_url           = "https://github.com/henry2cox/lcov/tree/diffcov_initial";
+our $title    = "LCOV - differential code coverage report";
 lcovutil::set_tool_name(basename($0));
 
 # Specify coverage rate limits (in %) for classifying file entries
@@ -4486,7 +4483,7 @@ if (!GetOptions("output-directory|o=s"  => \$output_directory,
                 "highlight"             => \$highlight,
                 "legend"                => \$legend,
                 "quiet|q"               => \$lcovutil::quiet,
-                "verbose|v"             => \$lcovutil::verbose,
+                "verbose|v+"            => \$lcovutil::verbose,
                 "help|h|?"              => \$help,
                 "version"               => \$version,
                 "html-prolog=s"         => \$html_prolog_file,
@@ -4832,7 +4829,7 @@ if (defined($SummaryInfo::coverageCriteriaScript)) {
 
 lcovutil::warn_file_patterns(); # warn about unused include/exclude directives
 
-lcovutil::save_profile("$output_directory/genhtml", 'genhtml');
+lcovutil::save_profile("$output_directory/genhtml");
 
 exit($exit_status);
 
@@ -4900,11 +4897,11 @@ Operation:
       --no-prefix                   Do not remove prefix from directory names
       --(no-)function-coverage      Enable (disable) function coverage display
       --(no-)branch-coverage        Enable (disable) branch coverage display
-      --filter FILTERS              FILTERS (branch,line): ignore branchcov
-                                    counts on lines which seem to have no
-                                    conditionals
+      --filter FILTERS              FILTERS (branch,line,brace,range,blank,function):
+                                    ignore branchcov counts on lines which seem
+                                    to have no conditionals
                                     Ignore linecov counts on closing brace
-                                    of block
+                                    of block, blank, or out-of-range lines
       --include PATTERNS            Display data only for files matching
                                     PATTERNS.
       --exclude PATTERNS            Do not display for files matching PATTERNS.
@@ -4917,7 +4914,7 @@ Operation:
                                     slaves during processing.
       --profile [filename]          Write performance performance statistics
                                     to filename (default is
-				    'output_directory/genhtml.json').
+                                    'output_directory/genhtml.json').
 
 HTML output:
   -f, --frames                      Use HTML frames for source code view
