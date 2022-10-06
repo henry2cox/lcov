@@ -972,7 +972,7 @@ sub is_external($)
 {
   my $filename = shift;
 
-  return 0 unless (defined($opt_no_external) && $opt_no_external);
+  return 0 unless (defined($opt_no_external) && !$opt_no_external);
 
   foreach my $dir (@internal_dirs) {
     return 0 if ($filename =~ /^\Q$dir\/\E/);
