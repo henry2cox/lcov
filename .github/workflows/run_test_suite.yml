@@ -90,9 +90,38 @@ jobs:
           path: tests/test.log
           if-no-files-found: error
 
-      - name: Upload test directory shrapnel  as an artifact
+      - name: Upload test directory shrapnel as an artifact
         uses: actions/upload-artifact@v4
         with:
           name: "lcov-${{ github.sha }}-${{ runner.os }}-shrapnel"  # .zip
           path: tests
           #if-no-files-found: error
+
+      - name: coverage build
+        run: |-
+          set -x -o pipefail
+          COVERAGE_COMMAND=python3-coverage make COVERAGE=1 check
+
+      - name: Upload coverage report as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: "lcov-${{ github.sha }}-${{ runner.os }}-coverage"  # .zip
+          path: lcov_coverage
+          #if-no-files-found: error
+
+      - name: Upload coverage directory (static HTML)
+        id: deployment
+        uses: actions/upload-pages-artifact@v1
+        with:
+          path: lcov_coverage
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-24.04
+    needs: test_suite
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

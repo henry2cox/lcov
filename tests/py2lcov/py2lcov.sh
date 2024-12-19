@@ -40,7 +40,22 @@ while [ $# -gt 0 ] ; do
                shift
             fi
             COVER="perl -MDevel::Cover=-db,${COVER_DB},-coverage,statement,branch,condition,subroutine,-silent,1 "
-            PYCOV="COVERAGE_FILE=${PYCOV_DB} coverage run --branch --append"
+            if [ '' != "${COVERAGE_COMMAND}" ] ; then
+                CMD=${COVERAGE_COMMAND}
+            else
+                CMD='coverage'
+                which $CMD
+                if [ 0 != $? ] ; then
+                    CMD='python3-coverage' # ubuntu?
+                fi
+            fi
+            which $CMD
+            if [ 0 != $? ] ; then
+                echo "cannot find 'coverage' or 'python3-coverage'"
+                echo "unable to run py2lcov - please install python Coverage.py package"
+                exit 1
+            fi
+            PYCOV="COVERAGE_FILE=${PYCOV_DB} $CMD run --branch --append"
             #PYCOV="coverage run --data-file=${PYCOV_DB} --branch --append"
             ;;
 
@@ -141,10 +156,14 @@ if [[ 1 == $CLEAN_ONLY ]] ; then
     exit 0
 fi
 
-CMD='coverage'
-which $CMD
-if [ 0 != $? ] ; then
-    CMD='python3-coverage' # ubuntu?
+if [ '' != "${COVERAGE_COMMAND}" ] ; then
+    CMD=${COVERAGE_COMMAND}
+else
+    CMD='coverage'
+    which $CMD
+    if [ 0 != $? ] ; then
+        CMD='python3-coverage' # ubuntu?
+    fi
 fi
 which $CMD
 if [ 0 != $? ] ; then
@@ -161,7 +180,7 @@ if [ 0 != $? ] ; then
         exit 1
     fi
 fi
-eval ${PYCOV} ${PY2LCOV_TOOL} -o functions.info --cmd $CMD functions.dat $VERSION
+eval COVERAGE_COMMAND=$CMD ${PYCOV} ${PY2LCOV_TOOL} -o functions.info --cmd $CMD functions.dat $VERSION
 if [ 0 != $? ] ; then
     echo "py2lcov failed function example"
     if [ 0 == $KEEP_GOING ] ; then

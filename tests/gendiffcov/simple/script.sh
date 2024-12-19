@@ -39,7 +39,24 @@ while [ $# -gt 0 ] ; do
             fi
             export PYCOV_DB="${COVER_DB}_py"
             COVER="perl -MDevel::Cover=-db,${COVER_DB},-coverage,statement,branch,condition,subroutine,-silent,1 "
-            PYCOVER="COVERAGE_FILE=$PYCOV_DB coverage run --branch --append"
+
+            if [ '' != "${COVERAGE_COMMAND}" ] ; then
+                CMD=${COVERAGE_COMMAND}
+            else
+                CMD='coverage'
+                which $CMD
+                if [ 0 != $? ] ; then
+                    CMD='python3-coverage' # ubuntu?
+                fi
+            fi
+            which $CMD
+            if [ 0 != $? ] ; then
+                echo "cannot find 'coverage' or 'python3-coverage'"
+                echo "unable to run py2lcov - please install python Coverage.py package"
+                exit 1
+            fi
+
+            PYCOVER="COVERAGE_FILE=$PYCOV_DB $CMD run --branch --append"
             ;;
 
         --home | -home )
