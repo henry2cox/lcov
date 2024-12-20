@@ -32,6 +32,7 @@ report:
                --filter region ;                                    \
 	  if [ -f $(PYCOV_DB) ] ; then                              \
 	    $(BINDIR)/py2lcov -o pycov.info $(PYCOV_DB)             \
+		 --exclude '*dist-packages/*'                       \
                  --version-script $(VERSION_SCRIPT) ;               \
 	  fi ;                                                      \
 	  $(BINDIR)/genhtml --parallel -o $(HTML_RPT)               \
@@ -41,6 +42,7 @@ report:
               --version-script $(VERSION_SCRIPT)                    \
 	      --annotate-script $(ANNOTATE_SCRIPT)                  \
 	      --filter region                                       \
+              --show-owners                                         \
               --ignore empty,inconsistent ;                         \
 	  cp p*cov.info $(HTML_RPT) ;                               \
 	  echo "Wrote HTML report to ${HTML_RPT}" ;                 \
