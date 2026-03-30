@@ -90,13 +90,16 @@ format is described in man
 .RB [ \-\-criteria\-script
 .IR script_file ]
 .br
+.RB [ \-\-history\-script
+.IR callback ]
+.br
 .RB [ \-\-resolve-\-script
 .IR script_file ]
 .br
 .RB [ \-\-version\-script
 .IR script_file ]
 .br
-.RB [ \-\-history\-script
+.RB [ \-\-unreachable\-script
 .IR callback ]
 .br
 .RB [ \-\-comment
@@ -1148,6 +1151,30 @@ extracting data and to compare version IDs for the purpose of error checking whe
 .br
 
 See the genhtml man page for more details on the version script.
+
+.br
+
+.RE
+.B \-\-unreachable\-script
+.I module
+.br
+.RS
+
+Use
+.I module
+to decide whether particular branch expressions and/or MC/DC conditions
+should be removed from the coverage report.
+This option is equivalent to the
+.B unreachable_script
+config file option. See man
+.B lcovrc(5)
+for details.
+
+Note that
+.I \"module\"
+is required to be a Perl module.
+
+See the genhtml man page for more details.
 
 .br
 

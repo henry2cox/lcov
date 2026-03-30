@@ -56,7 +56,7 @@
 #   may be a higher number than you expect if you had been looking only
 #   at the line coverage percentage in the complete report
 #
-#   Note that you --owner and --age require that source data is annotated -
+#   Note that --owner and --age require that source data is annotated -
 #     see the --annotate-script section of the genhtml man page.
 #
 

@@ -6,12 +6,12 @@
 int main(int argc, const char *argv[]) // TEST_UNREACH_FUNCTION
 {
   bool b = false;
-  if (strcmp(argv[1], "1") == 0)
+  if (strcmp(argv[1], "1") == 0) // LCOV_UNREACHABLE_BRANCH 0
     b = true;
 
   char *a = nullptr;
   // TEST_BRANCH_START
-  if (b) // TEST_BRANCH_LINE
+  if (b) // TEST_BRANCH_LINE  LCOV_UNREACHABLE_COND 0t
     // TEST_BRANCH_STOP
     printf("Hai\n");
   delete[] a;

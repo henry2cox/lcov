@@ -1073,6 +1073,27 @@ This option is used by genhtml, lcov, and geninfo.
 
 .PP
 
+.BR ignore_unreachable_flag " ="
+.IR 0 | 1
+.IP
+When parsing a trace file, ignore 'unreachable' flags on branch expressions
+and MC/DC conditions - effectively, treating them as reachable.
+
+Note that the
+.I ignore_unreachable_flag
+is used only when reading a trace file.  It has no effect on unreachable
+flags set by your
+.I unreachable_script
+callback.
+See the
+.I unreachable_script
+section, below.
+
+.br
+This option is used by genhtml, lcov, and geninfo.
+
+.PP
+
 .BR expect_message_count " ="
 .IR message_type:expr(,message_type:expr)*
 .IP
@@ -3094,6 +3115,16 @@ See example implementation
 .I $LCOV_HOME/share/lcov/support-scripts/select.pm.
 .RE
 
+.PP
+
+.BR unreachable_script " ="
+.IR path_to_module | parameter
+.IP
+This option is equivalent to the geninfo/lcov/genhtml "\-\-unreachable\-script" option.
+
+This option can be used multiple times in the lcovrc file to specify both a module script and additional options which are passed to the callback.
+
+See the genhtml man page for details.
 
 .PP
 

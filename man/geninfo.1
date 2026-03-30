@@ -133,6 +133,9 @@ geninfo \- Generate tracefiles from GCOV coverage data files
 .RB [ \-\-version\-script
 .IR script_file  ]
 .br
+.RB [ \-\-unreachable\-script
+.IR module_file  ]
+.br
 .RB [ \-\-tempdir
 .IR dirname  ]
 .br
@@ -247,7 +250,7 @@ section in man
 .B lcovrc(1)
 for a description of the actions taken in this case.
 
-Additionally you can exclude specific branches or MC/DC expressions from
+Additionally you can exclude specific branches or MC/DC expressions
 without excluding the involved lines from line and function
 coverage.
 
@@ -360,6 +363,76 @@ Marks the end of a section which is excluded from exception branch coverage.
 The current line not part of this section
 .br
 .RE
+
+In addition,
+.B geninfo
+also supports the
+.I \"\-\-unreachable\-script\"
+option.  This provides a mechanism to exclude particular branch expressions and/or MC/DC conditions from coverage reports.
+A simple sample callback can be found in
+.RS
+.B \*[scriptdir]/unreach.pm.
+.RE
+
+This sample callback adds support for branch-specific and condition-specific
+exclusion, specified by end-of-line annotations in the source code:
+
+.RS
+.IP "LCOV_EXCLUDE_BRANCH  (expressionId[,blockId])\+"
+One or more space-separated branch exclusions may specified.
+.RS
+.IP expressionId:
+.br
+decimal integer which specifies which branch to exclude.
+An error is generated if an the index is invalid
+.IP blockId
+.br 
+decimal integer which specified the block index which contains the excluded expression.
+.br
+An error is generated if the block index is invalid
+If there is only one branch block at this location,
+then the block ID does not need to be specified
+.PP
+.PP
+.RE
+
+.IP "LCOV_UNREACHABLE_COND ([groupSize,]conditionId(t|f))\+"
+One or more space-separated MC/DC exclusions may specified.
+.RS
+.IP groupSize
+decimal integer which specified the group which contains
+the excluded condition.
+.br
+An error is generated if the groupSize is invalid
+.br
+If there is only one MC/DC group at this location,
+then the groupSize does not need to be specified.
+.IP conditionId
+.br
+decimal integer which specifies which condition to exclude
+.br
+An error is generated if an the index is invalid
+
+.IP sense
+t' or 'f': the value of the condition which is unreachable
+
+.RE
+
+.RE
+
+For example, the line
+.RS
+code // LCOV_EXCLUDE_BRANCH 0,1 3 LCOV_EXCLUDE_CONDITION 0f
+.RE
+will exclude branch expressions 1 and 3 from block 0 (or generate an error if there is more than one branch block on this line), and the 'false' sense of condition 0 (or generate an error if there is more than one MC/DC group on this line).
+
+One way to determine the branch and/or condition ID in order to
+exclude them is to generate an HTML report without exclusions then hover the
+mouse over the colorized branch/condition region and read the IDs from the
+tooltip popup.
+Another way is to simply read the BRDA/MCDC entries in coverage data file.
+
+See the comment at the top of the sample script for more details.
 
 .SH OPTIONS
 
@@ -1372,6 +1445,28 @@ extracting data. The ID is used for error checking when merging .info files.
 
 See the genhtml man page for more details on the version script.
 
+.RE
+.B \-\-unreachable\-script
+.I module
+.br
+.RS
+Use
+.I module
+to decide whether particular branch expressions and/or MC/DC conditions
+should be removed from the coverage report.
+This option is equivalent to the
+.B unreachable_script
+config file option. See man
+.B lcovrc(5)
+for details.
+
+Note that
+.I \"module\"
+is required to be a Perl module.
+
+See the genhtml man page and the
+.I \"Exclusion markers\"
+section, above, for more information.
 
 .B \-v
 .br
@@ -1627,16 +1722,17 @@ Note that, as of LCOV 2.2, these numbers count function groups - not the individ
 
 Branch coverage information is stored one line per branch:
 
-.RS
-BRDA:<line_number>,[<exception>]<block>,<branch>,<taken>
-.RE
+BRDA:<line_number>,[<exception>][<unreachable>]<block>,<branch>,<taken>
 
 .I <line_number>
+.RS
 is the line number where the branch is found - and is expected to be a non-zero integer.
+.RE
 .br
 .I <block>
 and
 .I <branch>
+.RS
 serve to uniquely define a particular edge in the expression tree of a particular conditional found on the associated line.
 .br
 Within a particular line,
@@ -1651,14 +1747,35 @@ is an ordered integer index related to expression tree traversal order of the as
 appears in the 'tooltip' popup of the associated branch in the
 .B genhtml
 output - so human-readable values are helpful to users who are trying to understand coverage results - for example, in order to develop additional regression tests, to improve coverage.
+.RE
 .br
 .I <taken>
+.RS
 is either '-' if the corresponding expression was never evaluated (e.g., the basic block containing the branch was never executed) or
 a number indicating how often that branch was taken.
+.RE
 .br
 .I <exception>
+.RS
 is 'e' (single character) if this is a branch related to exception handling - and is not present if the branch is not related to exceptions.
 Exception branch identification requires compiler support; note that gcc versions older than 9 do not differentiate exception branches.  Geninfo will be able to identify exception branches only if your toolchain version is new enough to support the feature.
+.RE
+.br
+.I <unreachable>
+.RS
+is 'U' (single character) if this branch is associated with an 'unreachable directive, and is not present if the branch is reachable.
+Unreachablility is intended to mark branch expressions which are should not appear in coverage reports - enabling users to ignore uncovered branches which can never be covered, to concentrate on other areas of the coverage report.
+.br
+See the 
+.I \"\-\-unreachable\-script\"
+discussion in man
+.B genhtml(1)
+and the
+.I \"ignore_unreachable_flag\"
+discussion in man
+.B lcovrc(5)
+for more information on how branch exclusion markers are set and used.
+.RE
 
 The following are example branch records whose
 .I <branch>
@@ -1701,41 +1818,51 @@ BRH:<number of branches hit>
 
 MC/DC information is stored one line per expression:
 
-.RS
-MCDC:<line_number>,<groupSize>,<sense>,<taken>,<index>,<expression>
-.RE
+MCDC:<line_number>,[<unreachable>]<groupSize>,<sense>,<taken>,<index>,<expression>
+
 where:
 
 .I <line_number>
+.RS
 is the line number where the condition is found - and is expected to be a non-zero integer.
+.RE
 .br
 .I <groupSize>
 and
 .I <index>
+.RS
 serve to uniquely define a particular element in the expression tree of a particular conditional found on the associated line.
 .br
 Within a particular line and group,
+.RE
 .I <index>
+.RS
 is an integer numbered from zero to
 .I <groupSize> - 1
 with no gaps. For some languages and some coding styles, there will only be one group on any particular line.
-
+.RE
+.br
 .I <sense>
+.RS
 is either
 .I "f"
 or
 .I "t",
 indicating whether the condition is sensitive to the indicated change - that is, does the condition outcome change if the corresponding changes from 'false' to 'true' or from 'tru' to 'false, respectively.
-
+.RE
+.br
 
 .I <taken>
+.RS
 is a count - 0 (zero) if the expression was not senstized, non-zero if it was senstized.
 Note that tome tools may treat
 .I <taken>
 as the number of times that the expression was sensitized where others may treat it
 as a boolean - 1:sensitized or 0: not sensitized.
+.RE
 
 .I <expression>
+.RS
 is an arbitrary string, intended to be a meaningful string which will help the user to understand the condition context - see below.
 .I <expression>
 appears in the 'tooltip' popup of the associated MC/DC condition in the
@@ -1744,7 +1871,26 @@ output - so human-readable values are helpful to users who are trying to underst
 .br
 For a given <groupSize> and <index>, the <expression> should be identical for both
 "t" and "f" senses.
+.RE
+.br
 
+.I <unreachable>
+.RS
+is 'U' (single character) if this condition is associated with an 'unreachable directive, and is not present if the condition is reachable.
+Unreachability is intended to mark conditions which should not appear in coverage reports - enabling users to ignore uncovered conditions which can never be covered, to concentrate on other areas of the coverage report.
+.br
+See the 
+.I \"\-\-unreachable\-script\"
+discussion in man
+.B genhtml(1)
+and the
+.I \"ignore_unreachable_flag\"
+discussion in man
+.B lcovrc(5)
+for more information on how branch exclusion markers are set and used.
+.RE
+.RE
+.br
 
 The following are example MC/DC records whose
 .I <expression>

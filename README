@@ -1,6 +1,6 @@
 -------------------------------------------------
 - README file for the LTP GCOV extension (LCOV) -
-- Last changes: 2026-02-10
+- Last changes: 2026-03-15
 -------------------------------------------------
 
 Description
@@ -381,8 +381,8 @@ LCOV features and capabilities fall into 7 major categories:
      coverage features that are interesting to the user.
 
      Other options are used to focus on or to exclude certain sections
-     of code, as well as to do regexp replacement of file names - possibly
-     using case-insensitive comparison.
+     of code and/or particular expressions, as well as to do regexp
+     replacement of file names - possibly using case-insensitive comparison.
      (Path munging is useful primarily when the build structure does
      not exactly match the layout in your revision control system; this
      is common in large projects with reusable components.)
@@ -433,6 +433,9 @@ LCOV features and capabilities fall into 7 major categories:
         viii) use history from previous execution to improve runtime
              performance of current execution by improving load balancing.
              Sample script:  history.pm
+	ix) mark particular branch expressions and/or MC/DC conditions as
+	    'unreachable' - so they are excluded from the coverage DB.
+	    Sample script:  unreach.pm
 
      The callback may be any desired script or executable - but there
      may be performance advantages if it is written as a Perl module.
@@ -448,7 +451,7 @@ LCOV features and capabilities fall into 7 major categories:
      Related options:
        --annotate-script, --criteria-script, --version-script
        --resolve-script, --select-script, --context-script
-       --simplify-script --history-script
+       --simplify-script --history-script --unreachable-script
 
   f) Performance
 
