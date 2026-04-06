@@ -75,4 +75,13 @@ sub simplify
     die("die in simplify");
 }
 
+sub exclude
+{
+    my $self = shift;
+    if (grep(/unreachable/, @$self)) {
+        return 0;
+    }
+    die("die in unreachable");
+}
+
 1;

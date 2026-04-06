@@ -4,7 +4,7 @@ set +x
 source ../../common.tst
 
 rm -f test.cpp *.gcno *.gcda a.out *.info *.log *.json diff.txt loop*.rc markers.err* readThis.rc testing.rc
-rm -rf select criteria annotate empty unused_src scriptErr scriptFixed epoch inconsistent highlight etc mycache cacheFail expect subset context labels sortTables simplify_* simplify missingRestore selectErr1 selectErr2 selectErr3 mcdc
+rm -rf select criteria annotate empty unused_src scriptErr scriptFixed epoch inconsistent highlight etc mycache cacheFail expect subset context labels sortTables simplify_* simplify missingRestore selectErr1 selectErr2 selectErr3 mcdc unreachable
 
 clean_cover
 
@@ -713,7 +713,7 @@ if [ 0 != $? ] ; then
     fi
 fi
 
-for callback in select annotate criteria simplify ; do
+for callback in select annotate criteria simplify unreachable ; do
 
   echo genhtml $DIFCOV_OPTS initial.info -o $callback --${callback}-script ./genError.pm
   $COVER $GENHTML_TOOL $DIFFCOV_OPTS initial.info -o $callback --${callback}-script ./genError.pm 2>&1 | tee ${callback}_err.log
@@ -752,6 +752,26 @@ for cb in start save restore finalize ; do
       fi
   fi
 done
+
+# test help message in 'unreach.pm'
+echo genhtml $DIFCOV_OPTS initial.info -o help --unreachable $SCRIPT_DIR/unreach.pm,--help --parallel $ignore
+LCOV_FORCE_PARALLEL=1 $COVER $GENHTML_TOOL $DIFCOV_OPTS initial.info -o help --unreachable $SCRIPT_DIR/unreach.pm,--help --parallel $ignore 2>&1 | tee unreach_help.log
+
+if [ 0 == ${PIPESTATUS[0]} ] ; then
+
+    echo "ERROR: genhtml missing help message from unreach.pm"
+    if [ 0 == $KEEP_GOING ] ; then
+	exit 1
+    fi
+fi
+grep "Both branch and MC/DC filtering" unreach_help.log
+if [ 0 != $? ] ; then
+    echo "ERROR: unreach help message"
+    if [ 0 == $KEEP_GOING ] ; then
+        exit 1
+    fi
+fi
+
 
 for ignore in '' '--ignore package' ; do
     echo genhtml $DIFCOV_OPTS initial.info -o missingRestore --simplify-script ./missingRestore.pm --parallel $ignore

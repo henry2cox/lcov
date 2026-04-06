@@ -3,8 +3,8 @@ set +x
 
 source ../../common.tst
 
-rm -f test.cpp *.gcno *.gcda a.out *.info *.info.gz diff.txt diff_r.txt diff_broken.txt *.log *.err *.json dumper* results.xlsx annotate.{cpp,exe} c d ./cover_db_py names.data linked.cpp linked_diff.txt *.msg
-rm -rf ./baseline ./current ./differential* ./reverse ./diff_no_baseline ./no_baseline ./no_annotation ./no_owners differential_nobranch reverse_nobranch baseline-filter* noncode_differential* broken mismatchPath elidePath ./cover_db ./criteria* ./mismatched ./navigation differential_prop proportion ./annotate ./current-* ./current_prefix* select select2 html_report ./usage ./errOut ./noNames no_source linked linked_err linked_elide linked_dir failUnder expect_err expect recategorize
+rm -f test.cpp *.gcno *.gcda a.out *.info *.info.gz diff.txt diff_r.txt diff_broken.txt *.log *.err *.json dumper* results.xlsx annotate.{cpp,exe} c d ./cover_db_py names.data linked.cpp linked_diff.txt *.msg unreach.cpp.annotated diff_err.txt
+rm -rf ./baseline ./current ./differential* ./reverse ./diff_no_baseline ./no_baseline ./no_annotation ./no_owners differential_nobranch reverse_nobranch baseline-filter* noncode_differential* broken mismatchPath elidePath ./cover_db ./criteria* ./mismatched ./navigation differential_prop proportion ./annotate ./current-* ./current_prefix* select select2 html_report ./usage ./errOut ./noNames no_source linked linked_err linked_elide linked_dir failUnder expect_err expect recategorize unreach unreach_vanilla diff_range
 
 clean_cover
 
@@ -27,6 +27,7 @@ echo *
 CRITERIA=${SCRIPT_DIR}/criteria
 SELECT=${SCRIPT_DIR}/select.pm
 HISTORY=${SCRIPT_DIR}/history.pm
+UNREACHABLE=${SCRIPT_DIR}/unreach.pm
 
 #PARALLEL=''
 #PROFILE="''
@@ -58,6 +59,7 @@ DIFFCOV_NOFRAME_OPTS="$BASE_OPTS --demangle-cpp --prefix $PARENT --version-scrip
 #DIFFCOV_OPTS="--function-coverage --branch-coverage --demangle-cpp --frame"
 #DIFFCOV_OPTS='--function-coverage --branch-coverage --demangle-cpp'
 DIFFCOV_OPTS="$DIFFCOV_NOFRAME_OPTS --frame"
+DIFFCOV_NO_VERSION_OPTS="$BASE_OPTS --demangle-cpp --prefix $PARENT --frame"
 
 status=0
 cp simple.cpp test.cpp
@@ -1559,6 +1561,84 @@ if [ 0 == $? ] ; then
         exit 1
     fi
 fi
+
+# test unreachable branch/mcdc exclusions
+#  first:  move our somewhat faked source file containing the annotations
+#     into place
+rm -f test.cpp unreach.cpp.annotated
+ln -s unreach.cpp test.cpp
+ln -s simple2.cpp.annotated unreach.cpp.annotated
+# now generate a report - using the same coverage and diff data as other tests
+#   this will work because we only care about line numbers - not their content
+echo ${LCOV_HOME}/bin/genhtml $DIFFCOV_NO_VERSION_OPTS --baseline-file ./baseline.info --diff-file diff.txt --annotate-script `pwd`/annotate.sh --show-owners all --ignore-errors source -o unreach ./current.info $IGNORE $POPUP --unreachable $UNREACHABLE
+$COVER ${GENHTML_TOOL} $DIFFCOV_NO_VERSION_OPTS --baseline-file ./baseline.info --diff-file diff.txt --annotate-script `pwd`/annotate.sh --show-owners all --ignore-errors source -o unreach ./current.info $GENHTML_PORT $IGNORE $POPUP  --unreachable $UNREACHABLE 2>&1 | tee unreach.log
+if [ 0 != ${PIPESTATUS[0]} ] ; then
+    echo "ERROR: genhtml unreach failed"
+    status=1
+    if [ 0 == $KEEP_GOING ] ; then
+        exit 1
+    fi
+fi
+
+# now generate a vanilla report (not differential) with excluded coverpoints
+echo ${LCOV_HOME}/bin/genhtml $DIFFCOV_NO_VERSION_OPTS --annotate-script `pwd`/annotate.sh --show-owners all --ignore-errors source -o unreach_vanilla ./current.info $IGNORE $POPUP --unreachable $UNREACHABLE
+$COVER ${GENHTML_TOOL} $DIFFCOV_NO_VERSION_OPTS --annotate-script `pwd`/annotate.sh --show-owners all --ignore-errors source -o unreach_vanilla ./current.info $GENHTML_PORT $IGNORE $POPUP  --unreachable $UNREACHABLE 2>&1 | tee unreach.log
+if [ 0 != ${PIPESTATUS[0]} ] ; then
+    echo "ERROR: genhtml unreach vanilla failed"
+    status=1
+    if [ 0 == $KEEP_GOING ] ; then
+        exit 1
+    fi
+fi
+
+# create 'diff' file which refers to out-of-range lines - to generate
+#  error message
+sed -E 's/22,24 \+23,23/32,34 \+33,33/' < diff.txt > diff_err.txt
+# specify a source filter - so "ReadBaselineSource" will try to recreate 
+#   the file
+echo ${LCOV_HOME}/bin/genhtml $DIFFCOV_NO_VERSION_OPTS --annotate-script `pwd`/annotate.sh --show-owners all --ignore-errors source --baseline-file baseline.info --diff-file diff_err.txt -o diff_range ./current.info  --filter branch
+$COVER ${GENHTML_TOOL} $DIFFCOV_NO_VERSION_OPTS --annotate-script `pwd`/annotate.sh --show-owners all --ignore-errors source --baseline-file baseline.info --diff-file diff_err.txt -o diff_range ./current.info --filter branch 2>&1 | tee diff_range_err.log
+if [ 0 == ${PIPESTATUS[0]} ] ; then
+    echo "ERROR: genhtml diff range didn't error out"
+    status=1
+    if [ 0 == $KEEP_GOING ] ; then
+        exit 1
+    fi
+fi
+grep -E "ERROR: .inconsistent.+: inconsistent diff data vs current source code: diff refers to 'current' line range" diff_range_err.log
+if [ 0 != $? ] ; then
+    echo "did not file expected range error"
+    status = 1
+    if [ 0 == $KEEP_GOING ] ; then
+        exit 1
+    fi
+fi
+
+if [ "${VER[0]}" -lt 14 ] ; then
+    # old gcc gets some line numbers wrong - so we need to ignore some 
+    #  out-of-range messages when we look for the one we want to check
+    EXTRA_IGNORE="--ignore range"
+fi
+
+# now ignore the inconsistency and see if we generate the report
+echo ${LCOV_HOME}/bin/genhtml $DIFFCOV_NO_VERSION_OPTS --annotate-script `pwd`/annotate.sh --show-owners all --ignore-errors source --baseline-file baseline.info --diff-file diff_err.txt -o diff_range ./current.info --filter branch --ignore inconsistent $EXTRA_IGNORE
+$COVER ${GENHTML_TOOL} $DIFFCOV_NO_VERSION_OPTS --annotate-script `pwd`/annotate.sh --show-owners all --ignore-errors source --baseline-file baseline.info --diff-file diff_err.txt -o diff_range ./current.info --filter branch --ignore inconsistent $EXTRA_IGNORE 2>&1 | tee diff_range.log
+if [ 0 != ${PIPESTATUS[0]} ] ; then
+    echo "ERROR: genhtml diff range didn't ignore error"
+    status=1
+    if [ 0 == $KEEP_GOING ] ; then
+        exit 1
+    fi
+fi
+grep -E "WARNING: .inconsistent.+: inconsistent diff data vs current source code: diff refers to 'current' line range" diff_range.log
+if [ 0 != $? ] ; then
+    echo "did not file expected range warning"
+    status = 1
+    if [ 0 == $KEEP_GOING ] ; then
+        exit 1
+    fi
+fi
+
 
 
 echo $SPREADSHEET_TOOL -o results.xlsx `find . -name "*.json"`

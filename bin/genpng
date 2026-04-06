@@ -288,7 +288,7 @@ sub gen_png($$$$$@)
     }
 
     foreach my $tla (keys(%lcovutil::tlaColor)) {
-        next if 'D' eq substr($tla, 0, 1); # skip deleted TLAs..they don't apper
+        next if grep(/$tla/, ('DCB', 'DUB', 'EUC', 'ECC'));
 
         if ($show_tla) {
             my $text = $tlaTextColor{$tla};

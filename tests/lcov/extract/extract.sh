@@ -22,6 +22,7 @@ fi
 #use geninfo for capture - so we can collect coverage info
 CAPTURE=$GENINFO_TOOL
 #CAPTURE="$LCOV_TOOL --capture --directory"
+UNREACHABLE="--unreachable-script $SCRIPT_DIR/unreach.pm"
 
 LCOV_OPTS="--branch-coverage $PARALLEL $PROFILE"
 # gcc/4.8.5 (and possibly other old versions) generate inconsistent line/function data
@@ -106,6 +107,7 @@ if [ 0 != $? ] ; then
 fi
 
 # test an empty/trivial history callback
+# exclude code that some gcc versions suck in, from /usr/include/...
 $COVER $CAPTURE . $LCOV_OPTS -o external.info $FILTER $IGNORE --profile --histor ./history.sh
 if [ 0 != $? ] ; then
     echo "Error:  unexpected error code from lcov --capture"
@@ -127,6 +129,68 @@ COUNT=`grep -c SF: external.info`
 if [ $COUNT == '1' ] ; then
     echo "expected at least 2 files in external.info - found $COUNT"
     exit 1
+fi
+
+# need the 'no-external' DB so we can compare effect of unreachable
+#  expressions while filtering out files from /usr/include that some
+#  old gcc versions want to include
+$COVER $CAPTURE . $LCOV_OPTS -o no_external.info $FILTER $IGNORE --profile --no-external
+if [ 0 != $? ] ; then
+    echo "Error:  unexpected error code from lcov --capture"
+    if [ $KEEP_GOING == 0 ] ; then
+        exit 1
+    fi
+fi
+
+# capture while marking 'unreachable' branch and condition
+$COVER $CAPTURE . $LCOV_OPTS -o unreach.info $FILTER $IGNORE --profile $UNREACHABLE --no-external
+if [ 0 != $? ] ; then
+    echo "Error:  unexpected error code from lcov --capture --unreach"
+    if [ $KEEP_GOING == 0 ] ; then
+        exit 1
+    fi
+fi
+
+# combine 'unreach' with vanilla - should see warning about mismatched
+#  'unreach' flags
+$COVER $LCOV_TOOL $LCOV_OPTS -o both_mismatch.info -a no_external.info -a unreach.info --ignore mismatch 2>&1 | tee both_mismatch.log
+if [ 0 != ${PIPESTATUS[0]} ] ; then
+    echo "Error:  unexpected error code from lcov merge both"
+    if [ $KEEP_GOING == 0 ] ; then
+        exit 1
+    fi
+fi
+
+# look for both error messages...
+types="branch"
+if [ "$ENABLE_MCDC" == 1 ] ; then
+    types="$types MC/DC"
+fi
+for type in $types ; do
+    grep -E "mismatched 'unreachable' tag for $type" both_mismatch.log
+    if [ 0 != $? ] ; then
+        echo "Error:  didn't find expected $type mismatch unreach message"
+        if [ $KEEP_GOING == 0 ] ; then
+            exit 1
+        fi
+    fi
+done
+
+# write out the 'unreach' data while turning off the flag -
+#  result should be identical to 'external.info'
+$COVER $LCOV_TOOL $LCOV_OPTS -o identical.info -a unreach.info --rc ignore_unreachable_flag=1
+if [ 0 != $? ] ; then
+    echo "Error:  unexpected error code from lcov ignore unreach"
+    if [ $KEEP_GOING == 0 ] ; then
+        exit 1
+    fi
+fi
+diff identical.info no_external.info
+if [ 0 != $? ] ; then
+    echo "Error:   error diff output on ignore unreach"
+    if [ $KEEP_GOING == 0 ] ; then
+        exit 1
+    fi
 fi
 
 # callback tests
@@ -467,66 +531,66 @@ for attrib in "excl" "unreachable" ; do
     # override excl region start/stop and look for error
     $COVER $CAPTURE . $LCOV_OPTS --no-external -o regionErr1.info --rc lcov_${attrib}_start=TEST_OVERLAP_START --rc lcov_${attrib}_stop=TEST_OVERLAP_END --msg-log
     if [ $? == 0 ] ; then
-	echo "error expected overlap $attrib fail"
-	if [ $KEEP_GOING == 0 ] ; then
+        echo "error expected overlap $attrib fail"
+        if [ $KEEP_GOING == 0 ] ; then
             exit 1
-	fi
+        fi
     fi
 
     grep -E 'overlapping exclude directives. Found TEST_OVERLAP_START at .+ but no matching TEST_OVERLAP_END for TEST_OVERLAP_START at line ' regionErr1.msg
     if [ 0 != $? ] ; then
-	echo "error expected overlap message but didn't find"
-	if [ $KEEP_GOING == 0 ] ; then
+        echo "error expected overlap message but didn't find"
+        if [ $KEEP_GOING == 0 ] ; then
             exit 1
-	fi
+        fi
     fi
 
     $COVER $CAPTURE . $LCOV_OPTS --no-external -o regionErr2.info --rc lcov_${attrib}_start=TEST_DANGLING_START --rc lcov_${attrib}_stop=TEST_DANGLING_END --msg-log
     if [ $? == 0 ] ; then
-	echo "error expected dangling fail"
-	if [ $KEEP_GOING == 0 ] ; then
+        echo "error expected dangling fail"
+        if [ $KEEP_GOING == 0 ] ; then
             exit 1
-	fi
+        fi
     fi
 
     grep -E 'unmatched TEST_DANGLING_START at line .+ saw EOF while looking for matching TEST_DANGLING_END' regionErr2.msg
     if [ 0 != $? ] ; then
-	echo "error expected dangling message but didn't find"
-	if [ $KEEP_GOING == 0 ] ; then
+        echo "error expected dangling message but didn't find"
+        if [ $KEEP_GOING == 0 ] ; then
             exit 1
-	fi
+        fi
     fi
 
     $COVER $CAPTURE . $LCOV_OPTS --no-external -o regionErr3.info --rc lcov_${attrib}_start=TEST_UNMATCHED_START --rc lcov_${attrib}_stop=TEST_UNMATCHED_END --msg-log
     if [ $? == 0 ] ; then
-	echo "error expected unmatched fail"
-	if [ $KEEP_GOING == 0 ] ; then
+        echo "error expected unmatched fail"
+        if [ $KEEP_GOING == 0 ] ; then
             exit 1
-	fi
+        fi
     fi
 
     grep -E 'found TEST_UNMATCHED_END directive at line .+ without matching TEST_UNMATCHED_START' regionErr3.msg
     if [ 0 != $? ] ; then
-	echo "error expected unmapted message but didn't find"
-	if [ $KEEP_GOING == 0 ] ; then
+        echo "error expected unmapted message but didn't find"
+        if [ $KEEP_GOING == 0 ] ; then
             exit 1
-	fi
+        fi
     fi
 
     # override excl_line start/stop - and make sure we didn't match
     $COVER $CAPTURE . $LCOV_OPTS --no-external -o ${attrib}.info --rc lcov_${attrib}_start=nomatch_start --rc lcov_${attrib}_stop=nomatch_end
     if [ $? != 0 ] ; then
-	echo "error return from marker override"
-	if [ $KEEP_GOING == 0 ] ; then
+        echo "error return from marker override"
+        if [ $KEEP_GOING == 0 ] ; then
             exit 1
-	fi
+        fi
     fi
     EXCL_LINES=`grep -v $BRACE_LINE ${attrib}.info | grep -c "^DA:"`
     if [ $EXCL_LINES != $NOMARKER_LINES ] ; then
-	echo "did not honor marker override: expected $NOMARKER_LINES found $EXCL_LINES"
-	if [ $KEEP_GOING == 0 ] ; then
+        echo "did not honor marker override: expected $NOMARKER_LINES found $EXCL_LINES"
+        if [ $KEEP_GOING == 0 ] ; then
             exit 1
-	fi
+        fi
     fi
 done
 
@@ -719,7 +783,6 @@ if [ $COUNT != 2 ] ; then
     if [ $KEEP_GOING == 0 ] ; then
         exit 1
     fi
-    
 fi
 
 $COVER $CAPTURE . $LCOV_OPTS --no-external -o exclLine.info --rc lcov_excl_line=TEST_UNREACHABLE_LINE
@@ -815,7 +878,7 @@ if [ 0 != $? ] ; then
         exit 1
     fi
 fi
-    
+
 grep FNA:0,1,main removeUnreachFunc.info
 if [ 0 == $? ] ; then
     echo "Error:  expected function record to be removed"

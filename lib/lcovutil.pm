@@ -359,6 +359,11 @@ our $EXCL_LINE           = 'LCOV_EXCL_LINE';
 our $EXCL_BR_LINE        = 'LCOV_EXCL_BR_LINE';
 our $EXCL_EXCEPTION_LINE = 'LCOV_EXCL_EXCEPTION_BR_LINE';
 
+# should we ignore exclusion tags in the input .info file or not
+# by default: do not ignore
+# we don't expect user to want to change - so only changed via the RC file
+our $ignore_unreachable_flag = 0;
+
 our @exclude_file_patterns;
 our @include_file_patterns;
 our %excluded_files;
@@ -449,6 +454,8 @@ our %tlaColor = ("UBC" => "#FDE007",
                  "EUB" => "#DDDDDD",
                  "GIC" => "#30CC37",
                  "UIC" => "#EEAA30",
+                 'EUC' => 'white',     # use same background as boring text
+                 'ECC' => 'white',
                  # we don't actually use a color for deleted code.
                  #  ... it is deleted.  Does not appear
                  "DUB" => "#FFFFFF",
@@ -464,6 +471,8 @@ our %tlaTextColor = ("UBC" => "#aaa005",
                      "EUB" => "#777777",
                      "GIC" => "#18661c",
                      "UIC" => "#aa7718",
+                     'EUC' => 'black',
+                     'ECC' => 'black',
                      # we don't actually use a color for deleted code.
                      #  ... it is deleted.  Does not appear
                      "DUB" => "#FFFFFF",
@@ -496,6 +505,9 @@ our $profile;    # the 'enable' flag/name of output file
 # for complex build environments
 our @profileHistoryCallback;
 our $profileHistoryCallback;
+
+our @excludeCoverpointCallback;
+our $excludeCoverpointCallback;
 
 # need to defer any errors until after the options have been
 #  processed as user might have suppressed the error we were
@@ -1064,13 +1076,17 @@ sub cleanup_callbacks
 
 # use these list values from the RC file unless the option is
 #   passed on the command line
-my (@rc_filter, @rc_ignore, @rc_exclude_patterns,
-    @rc_include_patterns, @rc_subst_patterns, @rc_omit_patterns,
-    @rc_erase_patterns, @rc_version_script, @unsupported_config,
-    @rc_source_directories, @rc_build_dir, %unsupported_rc,
-    $keepGoing, $help, @rc_resolveCallback,
-    @rc_expected_msg_counts, @rc_criteria_script, @rc_contextCallback,
-    $rc_no_branch_coverage, $rc_no_func_coverage, $rc_no_checksum,
+my (@rc_filter, @rc_ignore,
+    @rc_exclude_patterns, @rc_include_patterns,
+    @rc_subst_patterns, @rc_omit_patterns,
+    @rc_erase_patterns, @rc_version_script,
+    @unsupported_config, @rc_source_directories,
+    @rc_build_dir, %unsupported_rc,
+    $keepGoing, $help,
+    @rc_resolveCallback, @rc_excludeCoverpointCallback,
+    @rc_expected_msg_counts, @rc_criteria_script,
+    @rc_contextCallback, $rc_no_branch_coverage,
+    $rc_no_func_coverage, $rc_no_checksum,
     $version);
 my $quiet = 0;
 our $tempdirname;
@@ -1127,23 +1143,24 @@ my %rc_common = (
              'lcov_unreachable_line'       => \$lcovutil::UNREACHABLE_LINE,
              'retain_unreachable_coverpoints_if_executed' =>
         \$lcovutil::retainUnreachableCoverpointIfHit,
-             "lcov_function_coverage" => \$lcovutil::func_coverage,
-             "lcov_branch_coverage"   => \$lcovutil::br_coverage,
-             "ignore_errors"          => \@rc_ignore,
-             "max_message_count"      => \$lcovutil::suppressAfter,
-             "message_log"            => \$lcovutil::message_log,
-             'expected_message_count' => \@rc_expected_msg_counts,
-             'stop_on_error'          => \$lcovutil::stop_on_error,
-             'treat_warning_as_error' => \$lcovutil::treat_warning_as_error,
-             'warn_once_per_file'     => \$lcovutil::warn_once_per_file,
-             'check_data_consistency' => \$lcovutil::check_data_consistency,
-             "rtl_file_extensions"    => \$rtlExtensions,
-             "c_file_extensions"      => \$cExtensions,
-             "perl_file_extensions"   => \$perlExtensions,
-             "python_file_extensions" => \$pythonExtensions,
-             "java_file_extensions"   => \$javaExtensions,
-             'info_file_pattern'      => \$info_file_pattern,
-             "filter_lookahead"       => \$lcovutil::source_filter_lookahead,
+             "ignore_unreachable_flag" => \$lcovutil::ignore_unreachable_flag,
+             "lcov_function_coverage"  => \$lcovutil::func_coverage,
+             "lcov_branch_coverage"    => \$lcovutil::br_coverage,
+             "ignore_errors"           => \@rc_ignore,
+             "max_message_count"       => \$lcovutil::suppressAfter,
+             "message_log"             => \$lcovutil::message_log,
+             'expected_message_count'  => \@rc_expected_msg_counts,
+             'stop_on_error'           => \$lcovutil::stop_on_error,
+             'treat_warning_as_error'  => \$lcovutil::treat_warning_as_error,
+             'warn_once_per_file'      => \$lcovutil::warn_once_per_file,
+             'check_data_consistency'  => \$lcovutil::check_data_consistency,
+             "rtl_file_extensions"     => \$rtlExtensions,
+             "c_file_extensions"       => \$cExtensions,
+             "perl_file_extensions"    => \$perlExtensions,
+             "python_file_extensions"  => \$pythonExtensions,
+             "java_file_extensions"    => \$javaExtensions,
+             'info_file_pattern'       => \$info_file_pattern,
+             "filter_lookahead"        => \$lcovutil::source_filter_lookahead,
              "filter_bitwise_conditional" =>
         \$lcovutil::source_filter_bitwise_are_conditional,
              'filter_blank_aggressive' => \$filter_blank_aggressive,
@@ -1171,7 +1188,8 @@ my %rc_common = (
                  \@CoverageCriteria::criteriaCallbackTypes,
              'criteria_callback_levels' =>
                  \@CoverageCriteria::criteriaCallbackLevels,
-             'criteria_script' => \@rc_criteria_script,
+             'criteria_script'    => \@rc_criteria_script,
+             'unreachable_script' => \@rc_excludeCoverpointCallback,
 
              "checksum"              => \$lcovutil::verify_checksum,
              'compute_file_version'  => \$lcovutil::compute_file_version,
@@ -1255,8 +1273,10 @@ our %argCommon = ("tempdir=s"         => \$tempdirname,
                       \@ReadCurrentSource::source_directories,
                   'build-directory=s' => \@lcovutil::build_directory,
 
-                  'resolve-script=s'       => \@lcovutil::resolveCallback,
-                  'context-script=s'       => \@lcovutil::contextCallback,
+                  'resolve-script=s'     => \@lcovutil::resolveCallback,
+                  'context-script=s'     => \@lcovutil::contextCallback,
+                  'unreachable-script=s' =>
+                      \@lcovutil::excludeCoverpointCallback,
                   "filter=s"               => \@opt_filter,
                   "demangle-cpp:s"         => \@lcovutil::cpp_demangle,
                   "ignore-errors=s"        => \@opt_ignore_errors,
@@ -1566,6 +1586,9 @@ sub parseOptions
                     [\@lcovutil::build_directory, \@rc_build_dir],
                     [\@lcovutil::resolveCallback, \@rc_resolveCallback],
                     [\@lcovutil::contextCallback, \@rc_contextCallback],
+                    [\@lcovutil::excludeCoverpointCallback,
+                     \@rc_excludeCoverpointCallback
+                    ],
     ) {
         @{$rc->[0]} = @{$rc->[1]} unless (@{$rc->[0]});
     }
@@ -1598,15 +1621,14 @@ sub parseOptions
     #   in geninfo call
     return 1 if $lcov_capture;
 
-    foreach my $cb ([\$versionCallback, \@lcovutil::extractVersionScript],
-                    [\$resolveCallback, \@lcovutil::resolveCallback],
+    foreach my $cb ([\$versionCallback, \@extractVersionScript],
+                    [\$resolveCallback, \@resolveCallback],
                     [\$CoverageCriteria::criteriaCallback,
                      \@CoverageCriteria::coverageCriteriaScript
                     ],
-                    [\$contextCallback, \@lcovutil::contextCallback],
-                    [\$profileHistoryCallback,
-                     \@lcovutil::profileHistoryCallback
-                    ],
+                    [\$contextCallback, \@contextCallback],
+                    [\$profileHistoryCallback, \@profileHistoryCallback],
+                    [\$excludeCoverpointCallback, \@excludeCoverpointCallback],
     ) {
         lcovutil::configure_callback($cb->[0], @{$cb->[1]})
             if (@{$cb->[1]});
@@ -2529,8 +2551,9 @@ sub is_filter_enabled
 {
     # return true of there is an opportunity for filtering
     return (grep({ defined($_) } @lcovutil::cov_filter) ||
-            0 != scalar(@lcovutil::omit_line_patterns) ||
-            0 != scalar(@lcovutil::exclude_function_patterns));
+            0 != scalar(@lcovutil::omit_line_patterns)        ||
+            0 != scalar(@lcovutil::exclude_function_patterns) ||
+            defined($lcovutil::excludeCoverpointCallback));
 }
 
 sub init_filters
@@ -3976,7 +3999,7 @@ sub value
 
 sub remove
 {
-    my ($self, $key, $check_if_present) = @_;
+    my ($self, $key, $check_if_present, $retainElement) = @_;
 
     my $data = $self->[HASH];
     if (!defined($check_if_present) ||
@@ -3988,7 +4011,7 @@ sub remove
         --$self->[HIT]       # hit
             if ($data->{$key} > 0);
 
-        delete $data->{$key};
+        delete $data->{$key} unless $retainElement;
         return 1;
     }
 
@@ -4081,6 +4104,9 @@ sub difference
 sub get_found_and_hit
 {
     my $self = shift;
+    # if exclusion filter not enabled, then count everything
+    #   else, walk the structure to find only the elements which
+    #   aren't excluded
     return ($self->[FOUND], $self->[HIT]);
 }
 
@@ -4094,15 +4120,18 @@ use constant {
               TAKEN     => 1,
               EXPR      => 2,
               EXCEPTION => 3,
+              EXCLUDED  => 4,
 };
 
 sub new
 {
-    my ($class, $id, $taken, $expr, $is_exception) = @_;
+    my ($class, $id, $taken, $expr, $is_exception, $excluded) = @_;
     # if branchID is not an expression - go back to legacy behaviour
-    my $self = [$id, $taken,
+    my $self = [$id,
+                $taken,
                 (defined($expr) && $expr eq $id) ? undef : $expr,
-                defined($is_exception) && $is_exception ? 1 : 0
+                defined($is_exception) && $is_exception ? 1 : 0,
+                defined($excluded) && $excluded ? 1 : 0,
     ];
     bless $self, $class;
     my $c = $self->count();
@@ -4166,6 +4195,18 @@ sub is_exception
     return $self->[EXCEPTION];
 }
 
+sub is_excluded
+{
+    my $self = shift;
+    return $self->[EXCLUDED];
+}
+
+sub set_excluded
+{
+    my $self = shift;
+    $self->[EXCLUDED] = 1;
+}
+
 sub merge
 {
     # return 1 if something changed, 0 if nothing new covered or discovered
@@ -4188,17 +4229,32 @@ sub merge
         #  was seen first - which is unpredictable during threaded execution.
         $self->[EXCEPTION] = 0;
     }
+    my $changed = 0;
+    if ($self->is_excluded() != $that->is_excluded()) {
+        # if 'ignore_unreachable_flag' is disabled, then 'unreachable' flag is
+        #   set when info file is read - or is set when --unreachable
+        #   callback is called - so the two expressions will have both be
+        #   unset unless we really are trying to compare
+        my $loc = defined($filename) ? "\"$filename\":$line: " : '';
+        lcovutil::ignorable_error($lcovutil::ERROR_MISMATCH,
+                           "${loc}mismatched 'unreachable' tag for branch id " .
+                               $self->id() . ", " .
+                               $that->id() . ": '" . $self->is_excluded() .
+                               "' -> '" . $that->is_excluded() . "'");
+        # set 'self' to 'excluded'
+        $changed = $self->[EXCLUDED] != 1;
+        $self->[EXCLUDED] = 1;
+    }
     my $t = $that->[TAKEN];
-    return 0 if $t eq '-';    # no new news
+    return $changed if $t eq '-';    # no new news
 
     my $count = $self->[TAKEN];
-    my $changed;
     if ($count ne '-') {
         $count += $t;
-        $changed = $count == 0 && $t != 0;
+        $changed = 1 if $count == 0 && $t != 0;
     } else {
         $count   = $t;
-        $changed = $t != 0;
+        $changed = 1 if $t != 0;
     }
     $self->[TAKEN] = $count;
     return $changed;
@@ -4270,6 +4326,8 @@ sub totals
         my $bdata = $self->getBlock($blockId);
 
         foreach my $br (@$bdata) {
+            next
+                if $br->is_excluded();
             my $count = $br->count();
             ++$found;
             ++$hit if (0 != $count);
@@ -4298,7 +4356,8 @@ sub new
 
 sub insertExpr
 {
-    my ($self, $filename, $groupSize, $sense, $count, $idx, $expr) = @_;
+    my ($self, $filename, $groupSize, $sense, $count, $idx, $expr, $excluded) =
+        @_;
     my $groups = $self->[GROUPS];
     my $group;
     if (exists($groups->{$groupSize})) {
@@ -4327,7 +4386,7 @@ sub insertExpr
         $cond = MCDC_Expression->new($self, $groupSize, $idx, $expr);
         push(@$group, $cond);
     }
-    $cond->set($sense, $count);
+    $cond->set($sense, $count, $excluded);
 }
 
 sub line
@@ -4343,6 +4402,7 @@ sub totals
     while (my ($size, $group) = each(%{$self->groups()})) {
         foreach my $expr (@$group) {
             foreach my $sense (0, 1) {
+                next if $expr->is_excluded($sense);
                 my $count = $expr->count($sense);
                 if ('ARRAY' eq ref($count)) {
                     # differential number - report 'current'
@@ -4401,7 +4461,7 @@ sub is_compatible
 sub merge
 {
     # merge all groups from you into me
-    my ($self, $you) = @_;
+    my ($self, $you, $filename) = @_;
 
     my $mine    = $self->groups();
     my $yours   = $you->groups();
@@ -4412,8 +4472,17 @@ sub merge
             my $idx = 0;
             foreach my $e (@$m) {
                 my $y = $group->[$idx++];
-                $changed += $e->set(1, $y->count(1));
-                $changed += $e->set(0, $y->count(0));
+                foreach my $sense (0, 1) {
+                    my $e_excl = $e->is_excluded($sense);
+                    my $y_excl = $y->is_excluded($sense);
+                    lcovutil::ignorable_error($lcovutil::ERROR_MISMATCH,
+                        "$filename:" . $self->line() .
+                            ":mismatched 'unreachable' tag for MC/DC element $idx of group $size sense "
+                            . ($sense ? 'true' : 'false')
+                            . ": '$e_excl' -> '$y_excl'.")
+                        if ($e_excl != $y_excl);
+                    $changed = 1 if $e->set($sense, $y->count($sense), $y_excl);
+                }
             }
         } else {
             $mine->{$size} = Storable::dclone($group);
@@ -4430,31 +4499,37 @@ use constant {
               GROUP_SIZE => 1,    # which group in parent
               INDEX      => 2,    # index of this expression
 
-              EXPRESSION => 3,
-              TRUE  => 4,  # hit count of sensitization of 'true' sense of expr
-              FALSE => 5,  # hit count of sensitization of 'false' sense of expr
+              EXPRESSION     => 3,
+              EXCLUDED_true  => 4,    # could use negative count to indicate
+              EXCLUDED_false => 5,
+              TRUE  => 6,  # hit count of sensitization of 'true' sense of expr
+              FALSE => 7,  # hit count of sensitization of 'false' sense of expr
 };
 
 sub new
 {
     my ($class, $parent, $groupSize, $idx, $expr) = @_;
-
-    my $self = [$parent, $groupSize, $idx, $expr, 0, 0];
+    my $self = [$parent, $groupSize, $idx, $expr, 0, 0, 0, 0];
     return bless $self, $class;
 }
 
 sub set
 {
     # 'sense' should be 0 or 1 - for 'false' and 'true' sense, respectively
-    my ($self, $sense, $count) = @_;
-    return 0 if 0 == $count;
+    my ($self, $sense, $count, $excluded) = @_;
+    my $changed = 0;
+    if (defined($excluded) && $excluded) {
+        $changed = $self->[$sense ? EXCLUDED_true : EXCLUDED_false] != 1;
+        $self->[$sense ? EXCLUDED_true : EXCLUDED_false] = 1;
+    }
+    return $changed if 0 == $count;
 
     if ('ARRAY' eq ref($count)) {
         # recording a differential result
         $self->[$sense ? TRUE : FALSE] = $count;
         return 1;    # assumed changed
     }
-    my $changed = $count && $self->count($sense) == 0;
+    $changed = 1 if $count && $self->count($sense) == 0;
     $self->[$sense ? TRUE : FALSE] += $count;
     return $changed;
 }
@@ -4477,6 +4552,18 @@ sub index
 sub expression
 {
     return $_[0]->[EXPRESSION];
+}
+
+sub is_excluded
+{
+    my ($self, $sense) = @_;
+    return $self->[$sense ? EXCLUDED_true : EXCLUDED_false];
+}
+
+sub set_excluded
+{
+    my ($self, $sense) = @_;
+    $self->[$sense ? EXCLUDED_true : EXCLUDED_false] = 1;
 }
 
 sub count
@@ -5221,10 +5308,13 @@ sub append
         my $l = $branchElem->addBlock($block);
         push(@$l,
              BranchBlock->new($branch, $br->data(),
-                              $br->expr(), $br->is_exception()));
-        ++$self->[BranchMap::FOUND];                       # found one
-        ++$self->[BranchMap::HIT] if 0 != $br->count();    # hit one
-        $changed = 1;                                      # something new..
+                              $br->expr(), $br->is_exception(),
+                              $br->is_excluded()));
+        if (!$br->is_excluded()) {
+            ++$self->[BranchMap::FOUND];                       # found one
+            ++$self->[BranchMap::HIT] if 0 != $br->count();    # hit one
+        }
+        $changed = 1;                                          # something new..
     } else {
         $block = $branchElem->getBlock($block);
 
@@ -5542,7 +5632,7 @@ sub _calculate_counts
 
 sub union
 {
-    my ($self, $info) = @_;
+    my ($self, $info, $filename) = @_;
     my $changed = 0;
 
     my $mydata = $self->[BranchMap::DATA];
@@ -5561,7 +5651,7 @@ sub union
 
         # check if we are compatible.
         if ($myBranch->is_compatible($yourBranch)) {
-            $changed += $myBranch->merge($yourBranch);
+            $changed += $myBranch->merge($yourBranch, $filename);
         } else {
             lcovutil::ignorable_error($lcovutil::ERROR_INCONSISTENT_DATA,
                                       "cannot merge iconsistent MC/DC record");
@@ -5586,7 +5676,7 @@ sub intersect
             my $myBranch   = $mydata->{$line};
 
             if ($myBranch->is_compatible($yourBranch)) {
-                $changed += $myBranch->merge($yourBranch);
+                $changed += $myBranch->merge($yourBranch, $filename);
             } else {
                 lcovutil::ignorable_error($lcovutil::ERROR_INCONSISTENT_DATA,
                                        "cannot merge iconsistent MC/DC record");
@@ -5706,9 +5796,9 @@ sub applyFilter
         $self->removeBranches($line, $branches, $filter, $unreachable, 1);
     foreach my $tn ($perTestBranches->keylist()) {
         # want to remove matching branches everytwhere - so we don't want short-circuit evaluation
-        my $m = $self->removeBranches($line, $perTestBranches->value($tn),
-                                      $filter, $unreachable, 0);
-        $modified ||= $m;
+        $modified = 1
+            if $self->removeBranches($line, $perTestBranches->value($tn),
+                                     $filter, $unreachable, 0);
     }
     return $modified;
 }
@@ -6143,10 +6233,11 @@ our @source_directories;
 our $searchPath;
 our @dirs_used;
 use constant {
-              FILENAME => 0,
-              PATH     => 1,
-              SOURCE   => 2,
-              EXCLUDE  => 3,
+              FILENAME       => 0,
+              PATH           => 1,
+              SOURCE         => 2,
+              EXCLUDE        => 3,
+              BRANCH_EXCLUDE => 4,
 
               # reasons: (bitfield)
               EXCLUDE_REGION        => 0x10,
@@ -7681,7 +7772,7 @@ sub _filterFile
     my $modified = 0;
     if (0 != ($actions & DID_DERIVE)) {
         $modified = _deriveFunctionEndLines($traceInfo);
-        $modified ||= _checkConsistency($traceInfo);
+        $modified = 1 if _checkConsistency($traceInfo);
         if (0 == ($actions & DID_FILTER)) {
             return [$traceInfo, $modified];
         }
@@ -7749,21 +7840,20 @@ sub _filterFile
             $srcReader->notEmpty() ? $srcReader : undef;
 
         foreach my $tn ($lineData->keylist()) {
-            my $m =
-                _eraseFunctions($source_file, $reader,
-                                $funcData->value($tn), $lineData->value($tn),
-                                $branchData->value($tn), $mcdcData->value($tn),
-                                $checkData->value($tn), $state,
-                                0);
-            $modified ||= $m;
+            $modified = 1
+                if _eraseFunctions(
+                                 $source_file, $reader,
+                                 $funcData->value($tn), $lineData->value($tn),
+                                 $branchData->value($tn), $mcdcData->value($tn),
+                                 $checkData->value($tn), $state,
+                                 0);
         }
-        my $m =
-            _eraseFunctions($source_file, $reader,
-                            $traceInfo->func(), $traceInfo->sum(),
-                            $traceInfo->sumbr(), $traceInfo->mcdc(),
-                            $traceInfo->check(), $state,
-                            1);
-        $modified ||= $m;
+        $modified = 1
+            if _eraseFunctions($source_file, $reader,
+                               $traceInfo->func(), $traceInfo->sum(),
+                               $traceInfo->sumbr(), $traceInfo->mcdc(),
+                               $traceInfo->check(), $state,
+                               1);
     }
 
     return
@@ -7840,7 +7930,8 @@ sub _filterFile
                 $branch_region           ||
                 $range                   ||
                 $filterExceptionBranches ||
-                $omit)
+                $omit                    ||
+                defined($lcovutil::excludeCoverpointCallback))
         ) {
             my %uniq;
             # check MC/DC lines which are not also branch lines
@@ -7921,17 +8012,19 @@ sub _filterFile
                         $sumCount->remove($line);
                         $modified = 1;
                     }
-                } elsif (defined($filterExceptionBranches) &&
-                         defined($sumbrcount) &&
-                         defined($sumbrcount->value($line))) {
+                    next;
+                }
+                if (defined($filterExceptionBranches) &&
+                    defined($sumbrcount) &&
+                    defined($sumbrcount->value($line))) {
                     # exclude exception branches here
-                    my $m =
-                        $filterExceptionBranches->filter($line, $srcReader,
+                    $modified = 1
+                        if $filterExceptionBranches->filter($line, $srcReader,
                                   $sumbrcount, $testbrdata, $mcdc, $mcdc_count);
-                    $modified ||= $m;
                 }
             }    # foreach line
         }    # if branch_coverage
+
         if ($mcdc_single) {
             # find single-expression MC/DC's - if there is a matching branch
             #  expression on the same line, then remove the MC/DC
@@ -7951,6 +8044,35 @@ sub _filterFile
                 }
             }
         }
+
+        if (defined($lcovutil::excludeCoverpointCallback)) {
+            die("expected srcReader")
+                unless defined($srcReader) && $srcReader->notEmpty();
+
+            # call user callback to see if MC/DCs or branches are excluded
+
+            foreach my $t ([$lcovutil::br_coverage, 'branch',
+                            $testbrdata, $sumbrcount
+                           ],
+                           [$lcovutil::mcdc_coverage, 'mcdc', $testmcdc, $mcdc]
+            ) {
+                my ($enable, $str, $testCount, $sumCount) = @$t;
+                next unless $enable && $sumCount;
+                eval {
+                    $modified = 1
+                        if $lcovutil::excludeCoverpointCallback->exclude($str,
+                                             $srcReader, $testCount, $sumCount);
+                };
+                if ($@) {
+                    lcovutil::ignorable_error($lcovutil::ERROR_CALLBACK,
+                        '"unreachable" callback ' .
+                            ref($lcovutil::excludeCoverpointCallback) .
+                            "->exclude($str, readSrc, summaryDB, perTestDB) failed: $@"
+                    );
+                }
+            }
+        }
+
         next
             unless $region    ||
             $range            ||
@@ -8956,15 +9078,18 @@ sub _read_info
                 last;
             };
 
-            /^BRDA:(\d+),(e?)(\d+),(.+)$/ && do {
+            /^BRDA:(\d+),(e?)(U?)(\d+),(.+)$/ && do {
                 last if (!$lcovutil::br_coverage);
 
                 # Branch coverage data found
                 # line data is "lineNo,blockId,(branchIdx|branchExpr),taken
                 #   - so grab the last two elements, split on the last comma,
                 #     and check whether we found an integer or an expression
-                my ($line, $is_exception, $block, $d) =
-                    ($1, defined($2) && 'e' eq $2, $3, $4);
+                my ($line, $block, $d) = ($1, $4, $5);
+                my $is_exception = defined($2) && 'e' eq $2;
+                my $unreachable  = !$lcovutil::ignore_unreachable_flag &&
+                    defined($3) &&
+                    'U' eq $3;
 
                 if ($line <= 0) {
                     # Python coverage.py emits line number 0 (zero) for branches
@@ -9015,7 +9140,8 @@ sub _read_info
                 $nextBranchId{$key} = $branch + 1;
 
                 my $br =
-                    BranchBlock->new($branch, $taken, $expr, $is_exception);
+                    BranchBlock->new($branch, $taken, $expr, $is_exception,
+                                     $unreachable);
                 $fileData->sumbr()->append($line, $block, $br, $filename);
 
                 # Add test-specific counts
@@ -9026,13 +9152,18 @@ sub _read_info
                 last;
             };
 
-            /^MCDC:(\d+),(\d+),([tf]),(\d+),(\d+),(.+)$/ && do {
-                # line number, groupSize, sense, count, index, expression
+            /^MCDC:(\d+),(U?)(\d+),([tf]),(\d+),(\d+),(.+)$/ && do {
+                # lineNum, unreachable groupSize, sense, count, index, expression
                 # 'sense' is t/f: was this expression sensitized
+                # 'filtered' indicates that this particular MC/DC element
+                #    was excluded by
                 last unless $lcovutil::mcdc_coverage;
 
                 my ($line, $groupSize, $sense, $count, $idx, $expr) =
-                    ($1, $2, $3, $4, $5, $6);
+                    ($1, $3, $4, $5, $6, $7);
+                my $unreachable = !$lcovutil::ignore_unreachable_flag &&
+                    defined($2) &&
+                    'U' eq $2;
                 if ($line <= 0) {
                     lcovutil::ignorable_error($lcovutil::ERROR_FORMAT,
                         "\"$tracefile\":$.: unexpected line number '$line' in condition data record '$_'."
@@ -9043,6 +9174,8 @@ sub _read_info
 
                 if (!defined($current_mcdc) ||
                     $current_mcdc->line() != $line) {
+                    # @todo if all the MC/DC elements are excluded, then
+                    #   drop this coverpoint
                     if ($current_mcdc) {
                         $fileData->mcdc()->close_mcdcBlock($current_mcdc);
 
@@ -9054,7 +9187,7 @@ sub _read_info
                         $fileData->mcdc()->new_mcdc($fileData, $line);
                 }
                 $current_mcdc->insertExpr($filename, $groupSize, $sense eq 't',
-                                          $count, $idx, $expr);
+                                          $count, $idx, $expr, $unreachable);
                 last;
             };
 
@@ -9083,7 +9216,6 @@ sub _read_info
                             if (defined($testname));
                         $current_mcdc = undef;
                     }
-
                     # some paranoic checks
                     $self->data($filename)->check_data();
                     last;
@@ -9279,9 +9411,10 @@ sub write_info($$$)
                             my $branch_id   = $br->id();
                             my $branch_expr = $br->expr();
                             # mostly for Verilog:  if there is a branch expression: use it.
-                            printf(INFO_HANDLE "BRDA:%u,%s%u,%s,%s\n",
+                            printf(INFO_HANDLE "BRDA:%u,%s%s%u,%s,%s\n",
                                    $line,
                                    $br->is_exception() ? 'e' : '',
+                                   $br->is_excluded() ? 'U' : '',
                                    $block_id,
                                    defined($branch_expr) ? $branch_expr :
                                        $branch_id,
@@ -9319,10 +9452,12 @@ sub write_info($$$)
                             foreach my $sense ('t', 'f') {
                                 my $count = $e->count($sense eq 't');
                                 ++$mcdc_hit if 0 != $count;
+                                my $excluded =
+                                    $e->is_excluded($sense eq 't') ? 'U' : '';
                                 print(INFO_HANDLE
-                                     "MCDC:$line,$groupSize,$sense,$count,$index,"
-                                     . $e->expression(),
-                                 "\n");
+                                        "MCDC:$line,$excluded$groupSize,$sense,$count,$index,"
+                                        . $e->expression(),
+                                    "\n");
                             }
                         }
                     }
